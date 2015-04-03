@@ -1,9 +1,11 @@
-import java.io.ByteArrayInputStream
+import java.io._
 import java.util
 
 import akka.actor.ActorSystem
 import akka.http.Http
 import akka.http.Http.{IncomingConnection, ServerBinding}
+import akka.http.model._
+import akka.http.model.headers.`Transfer-Encoding`
 import akka.http.server.Directives._
 import akka.http.server._
 import akka.stream.ActorFlowMaterializer
@@ -28,54 +30,39 @@ object Main extends App {
       withKey(key).
       withUploadId(uploadId).
       withPartNumber(partNumber).
-      withInputStream(new ByteArrayInputStream(Md5Utils.computeMD5Hash(payload.toArray)))
+      withPartSize(payload.length).
+      withMD5Digest(Md5Utils.md5AsBase64(payload.toArray)).
+      withInputStream(new ByteArrayInputStream(payload.toArray))
+
+    //      withInputStream(new StringInputStream(Hex.encodeHexString(payload.toArray)))
+    //      withInputStream(new ByteArrayInputStream(Hex.
+    //      encodeHexString(payload.toArray).
+    //      getBytes(StandardCharsets.UTF_8)))
   }
 
   val route: Route =
     path("file" / Segment) { key =>
       get {
+        val client = AmazonS3.init()
 
-//        val objects = client.listObjects(bucketName).getObjectSummaries
-//        objects.foreach(e => {
-//          println(e.getBucketName)
-//          println(e.getKey)
-//          println(e.getOwner)
-//          println(e.getETag)
-//        })
+        val o = client.getObject(bucketName, key)
+        val length = o.getObjectMetadata.getContentLength()
+        val content = o.getObjectContent
 
+        val bytes = new Array[Byte](length.toInt)
+        content.read(bytes)
+        Source[Byte](bytes.toList).
 
-
-//        val o = client.getObject(bucketName, key)
-//        val content:InputStream =  o.getObjectContent
-//
-
-//        val bytes = Source(ByteString(content))
-//        val x2 = bytes.via(Flow[Byte].collect[ByteString]({
-//          case x:Byte => ByteString(x)
-//        }))
-//
-//        x2
-
-//        Source(ByteString(content)).runWith(Sink.fold[HttpResponse, Byte](HttpResponse())((acc, payload) => {
-//          e
-//        }))
-
-//        runFold[HttpResponse](HttpResponse())(e =>{
-//
-//        })
-
-//        runWith(Sink.foreach())
-
-
-
-//        Flow[InputStream](content).
-
-
-
-//        content.close()
-
-//
-//        println("Content-Type: "  + o.getObjectMetadata().getContentType())
+          via(Flow[Byte].grouped(bytes.size / 5)).
+          to(Sink.foreach { e =>
+          //          println("payload is " + e.size)
+          println(e)
+          complete(HttpResponse(
+            headers = List(`Transfer-Encoding`(TransferEncodings.chunked)),
+            entity = HttpEntity(e.toArray)
+          ))
+        }).
+          run()
 
         complete("ok")
       } ~
@@ -84,48 +71,40 @@ object Main extends App {
         val client = AmazonS3.init()
         val initRequest = new InitiateMultipartUploadRequest(bucketName, key)
         val initResponse = client.initiateMultipartUpload(initRequest)
-        println("==============================")
-        println(initResponse.getUploadId)
-        println("==============================")
 
         ctx.request.entity.dataBytes.
-          via(Flow[ByteString].grouped(2000)).
+          via(Flow[ByteString].grouped(1000)).
           runWith(Sink.fold[List[PartETag], Seq[ByteString]](List())((acc, chunkList) => {
           val payload = chunkList.flatten
-          println("payload size is : " + payload.size)
           val part = acc match {
 
             case List() => client.uploadPart(chunk(key, payload, initResponse.getUploadId, 1))
             case h :: t => client.uploadPart(chunk(key, payload, initResponse.getUploadId, h.getPartNumber + 1))
           }
-          println(part.getETag + " " + part.getPartNumber)
-          println("===============================")
           part.getPartETag :: acc
         })).
-        map(etags => {
-          val tags =  new util.ArrayList[PartETag]()
+          map(etags => {
+          val tags = new util.ArrayList[PartETag]()
           tags.addAll(etags)
           val compRequest = new CompleteMultipartUploadRequest(bucketName, key, initResponse.getUploadId, tags)
           try {
-            val xxxx = client.completeMultipartUpload(compRequest)
-            println("location " + xxxx.getLocation)
+            client.completeMultipartUpload(compRequest)
           } catch {
-            case e:Exception =>
+            case e: Exception =>
               println(e.getMessage)
-              e.printStackTrace(System.out)
           }
-          println("finished complete multipart request ")
         }).
-        flatMap[RouteResult] { e =>
-          println("complete http request")
-          ctx.complete(s"result is")
+          flatMap[RouteResult] { e =>
+          ctx.complete(HttpResponse(
+            status = 200,
+            entity = HttpEntity("Upload complete")
+          ))
         }
       }
     }
 
   val source: Source[IncomingConnection, Future[ServerBinding]] = Http().bind(interface = "localhost", port = 9000)
   source.to(Sink.foreach { connection =>
-    println(connection.remoteAddress)
     connection handleWith Route.handlerFlow(route)
   }).run()
 
