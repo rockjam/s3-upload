@@ -21,6 +21,5 @@ libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-actor" % "2.3.9" exclude("org.scala-lang", "scala-library"),
     "com.typesafe.akka" %% "akka-stream-experimental" % "1.0-M5",
     "com.typesafe.akka" %% "akka-http-experimental" % "1.0-M5",
-    "com.typesafe.akka" %% "akka-http-core-experimental" % "1.0-M5",
-    "com.amazonaws" % "aws-java-sdk-s3" % "1.9.0"
+    "com.typesafe.akka" %% "akka-http-core-experimental" % "1.0-M5"
 )
