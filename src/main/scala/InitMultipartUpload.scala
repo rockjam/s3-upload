@@ -40,24 +40,23 @@ class InitMultipartUpload extends UriEncode with Crypto with Hex {
   }
 
   private def getSignature(stringToSign:String) = {
-    val DateKey = sign(s"AWS4${Settings.secretAccessKey}", fdate)
-    val DateRegionKey = sign(DateKey, Settings.region)
-    val DateRegionServiceKey = sign(DateRegionKey, "s3")
-    val SigningKey = sign(DateRegionServiceKey, "aws4_request")
-    
-    sign(SigningKey, stringToSign)
+    val DateKey = sign(fdate, s"AWS4${Settings.secretAccessKey}")
+    val DateRegionKey = sign(Settings.region, DateKey)
+    val DateRegionServiceKey = sign("s3", DateRegionKey)
+    val SigningKey = sign("aws4_request", DateRegionServiceKey)
+
+    toHex(sign(stringToSign, SigningKey))
   }
-  
+
   private def getStringToSign(canonicalRequest:String) = {
-    val timeStampISO8601Format = DateTime.now.toIsoDateString().replaceAll("-","").replaceAll(":","")+"Z"
     val scope = s"$fdate/${Settings.region}/s3/aws4_request"
     val hashed = toHex(hash(canonicalRequest))
-    s"""
-      |AWS4-HMAC-SHA256
-      |$timeStampISO8601Format
-      |$scope
-      |$hashed
-    """.stripMargin
+    List(
+      "AWS4-HMAC-SHA256",
+      date.toRfc1123DateTimeString,
+      scope,
+      hashed
+    ).mkString("\n")
   }
 
   private def getCanonicalRequest(request: HttpRequest) = {
@@ -67,14 +66,14 @@ class InitMultipartUpload extends UriEncode with Crypto with Hex {
     val CanonicalHeaders = getCanonicalHeaders(request.headers)
     val SignedHeaders = getSignedHeaders(request.headers)
     val HashedPayload = toHex(hash(""))
-    s"""
-        |$HTTPMethod
-        |$CanonicalURI
-        |$CanonicalQueryString
-        |$CanonicalHeaders
-        |$SignedHeaders
-        |$HashedPayload
-    """.stripMargin
+    List(
+      HTTPMethod,
+      CanonicalURI,
+      CanonicalQueryString,
+      CanonicalHeaders,
+      SignedHeaders,
+      HashedPayload
+    ).mkString("\n")
   }
 
   private def getCanonicalQueryString(queryString:String) =
@@ -93,7 +92,7 @@ class InitMultipartUpload extends UriEncode with Crypto with Hex {
     headers.
       map(h => s"${h.lowercaseName()}:${h.value().trim}").
       sorted.
-      mkString("\n")
+      mkString("\n")+"\n"
 
   private def getSignedHeaders(headers:Seq[HttpHeader]) =
     headers.

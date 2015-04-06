@@ -15,8 +15,8 @@ trait Crypto {
   implicit def string2Byte(s:String): Array[Byte] = s.getBytes
 
   def sign(data: Array[Byte], key: Array[Byte]): Array[Byte] = {
-    val mac = Mac.getInstance("HmacSHA1")
-    mac.init(new SecretKeySpec(key, "HmacSHA1"))
+    val mac = Mac.getInstance("HmacSHA256")
+    mac.init(new SecretKeySpec(key, "HmacSHA256"))
     mac.doFinal(data)
   }
 
