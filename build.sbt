@@ -18,6 +18,7 @@ scalacOptions ++= Seq(
     "-language:postfixOps"
 )
 libraryDependencies ++= Seq(
+    "org.scala-lang.modules" %% "scala-xml" % "1.0.3",
     "com.typesafe.akka" %% "akka-actor" % "2.3.9" exclude("org.scala-lang", "scala-library"),
     "com.typesafe.akka" %% "akka-stream-experimental" % "1.0-M5"
       exclude("com.typesafe.akka", "akka-actor_2.11")

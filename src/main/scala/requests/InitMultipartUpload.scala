@@ -5,17 +5,13 @@ import akka.http.model.{HttpMethods, HttpProtocols, HttpRequest}
 import akka.http.util.DateTime
 import util._
 
-object InitMultipartUpload {
-  def apply(key:String, date:DateTime = DateTime.now) = new InitMultipartUpload(date).request(key)
-}
-
-class InitMultipartUpload(val reqDate:DateTime) extends Signing {
+case class InitMultipartUpload(key:String, reqDate:DateTime) extends Signing {
 
   val emptyHash = toHex(hash(""))
   override def date = reqDate
   override def hashedPayload = emptyHash
 
-  def request(key: String): HttpRequest = {
+  def request(): HttpRequest = {
     val request = HttpRequest(
       method = HttpMethods.POST,
       uri = s"/$key?uploads",

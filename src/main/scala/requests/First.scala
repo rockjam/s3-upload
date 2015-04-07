@@ -8,18 +8,17 @@ import akka.util.ByteString
 import util.{`Transfer-Encoding`, `x-amz-content-sha256`, Settings}
 
 case class First(key:String, uploadId:String, reqDate:DateTime)
-  extends Signing with RequestingAndPartNumbering {
+  extends Signing with Requesting {
 
   override def date = reqDate
   override def hashedPayload = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD"
-  override def partNumber = 1
 
   override def request(payload:ByteString):(HttpRequest, String) = {
-    val fakeContent = chunk(payload, toHex(sign("", "1")))
+//    val fakeContent = chunk(payload, toHex(sign("", "1")))
 
     val request = HttpRequest(
       method = HttpMethods.PUT,
-      uri = s"/$key?partNumber=$partNumber&uploadId=$uploadId",
+      uri = s"/$key?partNumber=1&uploadId=$uploadId",
       headers = List(
         Host(s"${Settings.bucketName}.s3.amazonaws.com"),
         Date(date),

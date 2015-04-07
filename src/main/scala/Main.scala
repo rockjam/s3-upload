@@ -1,7 +1,7 @@
 import akka.actor.ActorSystem
 import akka.http.Http
 import akka.http.Http.{IncomingConnection, ServerBinding}
-import akka.http.model.{HttpRequest, HttpHeader, HttpResponse}
+import akka.http.model.HttpResponse
 import akka.http.model.headers.ETag
 import akka.http.server.Directives._
 import akka.http.server._
@@ -12,7 +12,7 @@ import akka.util.ByteString
 import requests._
 
 import scala.concurrent.Future
-import scala.util.{Failure, Success}
+import scala.xml.XML
 
 object Main extends App {
 
@@ -21,7 +21,9 @@ object Main extends App {
   implicit val executionContext = system.dispatcher
 
 
-//  case class Accumulator(etags:List[Option[String]], request:HttpRequest, partNumber:Int, signature:String)
+  case class Accumulator(etags:List[Option[String]], request:Requesting, partNumber:Int) {
+    def nextPart = partNumber + 1
+  }
 
   val route: Route =
     path("file" / Segment) { key =>
@@ -30,63 +32,56 @@ object Main extends App {
       } ~
       post { ctx =>
         val now = DateTime.now
-        HttpClient.
-          makeRequest(InitMultipartUpload(key, now)).
-          //map / flatMap
-          map { initResp =>
+        val client = new HttpClient()
+        client.
+          makeRequest(InitMultipartUpload(key, now).request()).
+          flatMap { initResp =>
             initResp.entity.dataBytes.
-              via(Flow[ByteString].map { e => e.decodeString("utf-8")/*.toXml.getUploadId*/}).//получаем в ответе uploadId
+              via(Flow[ByteString].map { e => XML.loadString(e.decodeString("utf-8")).
+                child.find(_.label=="UploadId").map(_.text).get//remove get
+              }).
               runWith(Sink.head).
-              map { upId =>
+              flatMap { upId =>
                 ctx.request.
                   entity.
-                  getDataBytes().
-                  runWith(Sink.fold[(List[Option[String]], RequestingAndPartNumbering), ByteString]
-                  (
-                    (List[Option[String]](),First(key, upId, now))
-                  )
-                { (acc, payload) =>
-                  val (etags, curr) = acc
-                  val req = curr.request(payload)
-                  val newAcc =
-                  HttpClient.makeRequest(req._1).
-                    collect {
-                    case resp:HttpResponse =>
-                      (resp.headers.find(_==ETag).map(_.value) :: etags,
-                        Subsequent(key, upId, now, req._2, curr.partNumber + 1))
-                  }.value
-                  newAcc.get.get//получаем тут респонс, потому что нам он нужен
-                }).
-                map { acc =>
-                  val (etags, last) = acc
-
-                  //видимо last и есть последний перед
-                  //только нет предыдущей signature
-                  //поскольку
-                  last.request(ByteString.empty)
-                  HttpClient.makeRequest()
-
-
-
-                  //последний запрос + закрытие upload-a
-                  HttpClient.makeRequest(Final(key, upId, now, last.request(ByteString.empty)._2, last.partNumber + 1).request())
-
-
-                }.value
+                  dataBytes.
+                  runWith(Sink.fold[Future[Accumulator], ByteString]
+                    (Future(Accumulator(List(), First(key, upId, now), 1)))
+                    { (af, payload) =>
+                      af.flatMap { acc =>
+                        val req = acc.request.request(payload)
+                        client.makeRequest(req._1).
+                          map { resp:HttpResponse =>
+                          Accumulator(
+                            resp.headers.find(_==ETag).map(_.value) :: acc.etags,
+                            Subsequent(key, upId, now, req._2, acc.nextPart),
+                            acc.nextPart)
+                          }
+                      }
+                    }).
+                    flatMap { last =>
+                      last.flatMap { acc =>
+                        val request = acc.request.request(ByteString.empty)._1
+                        client.
+                          makeRequest(request).
+                          flatMap { resp:HttpResponse =>
+                            val etags = (resp.headers.find(_==ETag).map(_.value) :: acc.etags).flatten
+                            val completeRequest = CompleteMultipartUpload(key, upId, now, etags).request()
+                            client.makeRequest(completeRequest).
+                              flatMap {resp:HttpResponse =>
+                                resp.entity.dataBytes.
+                                  via(Flow[ByteString].map(_.decodeString("utf-8"))).
+                                  runWith(Sink.head).
+                                  flatMap { body =>
+                                    ctx.complete(HttpResponse(status = resp.status, entity = body))
+                                  }
+                              }
+                          }
+                      }
+                    }
               }
-
-
           }
-
         }
-
-
-
-
-
-
-
-        ctx.complete("ok")
       }
 
   val source: Source[IncomingConnection, Future[ServerBinding]] = Http().bind(interface = "localhost", port = 9000)

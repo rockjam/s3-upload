@@ -6,12 +6,11 @@ import akka.http.util.DateTime
 import akka.util.ByteString
 import util.{`x-amz-content-sha256`, Settings}
 
-case class Subsequent(key:String, uploadId:String, reqDate:DateTime, prevSignature:String, pNumber:Int)
-  extends Signing with RequestingAndPartNumbering {
+case class Subsequent(key:String, uploadId:String, reqDate:DateTime, prevSignature:String, partNumber:Int)
+  extends Signing with Requesting {
 
   override def date: DateTime = reqDate
   override def hashedPayload: String = ""//не используется
-  override def partNumber = pNumber
 
   override def request(payload:ByteString):(HttpRequest, String) = {
     val signature = getSignature(stringToSign(payload))

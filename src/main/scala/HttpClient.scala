@@ -9,8 +9,7 @@ import scala.concurrent.Future
 
 
 
-//class HttpClient {
-object HttpClient {
+class HttpClient {
 
   def makeRequest(request: HttpRequest)(implicit system: ActorSystem, materializer: FlowMaterializer): Future[HttpResponse] = {
     implicit val ec = system.dispatcher
