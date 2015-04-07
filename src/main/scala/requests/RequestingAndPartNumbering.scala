@@ -1,0 +1,3 @@
+package requests
+
+trait RequestingAndPartNumbering extends Requesting with PartNumbering

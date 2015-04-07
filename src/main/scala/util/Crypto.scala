@@ -6,9 +6,11 @@ import javax.crypto.spec.SecretKeySpec
 
 trait Crypto {
 
-  def hash(text: String): Array[Byte] = {
+  def hash(text: String): Array[Byte] = hash(text.getBytes("UTF-8"))
+
+  def hash(bytes:Array[Byte]): Array[Byte] = {
     val md: MessageDigest = MessageDigest.getInstance("SHA-256")
-    md.update(text.getBytes("UTF-8"))
+    md.update(bytes)
     md.digest()
   }
 

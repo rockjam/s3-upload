@@ -1,4 +1,6 @@
-import com.typesafe.config.{ConfigFactory, Config}
+package util
+
+import com.typesafe.config.{Config, ConfigFactory}
 
 object Settings {
 
